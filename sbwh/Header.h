@@ -140,15 +140,9 @@ struct Utilities
 {
   struct Destination
   {
-    int port;
     std::string protocol;
     std::string host;
     std::string target;
-
-    // Destination() = default;
-    // Destination(const Destination&) = default;
-    // Destination(Destination&&) = default;
-    // Destination& operator=(const Destination&) = default;
   };
 
   static const Destination getDestinationFromUrl(const std::string& url);

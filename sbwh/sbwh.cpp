@@ -220,10 +220,6 @@ bool SendByWebhook::send(const Payload& payload)
 
 const Utilities::Destination Utilities::getDestinationFromUrl(const std::string& url)
 {
-  static const std::map<std::string, int> ProtocolPortMap{
-    { "http", 80 },
-    { "https" , 443},
-  };
   static const boost::regex re = boost::regex(R"(^(.+)://([^:]+?)(:([0-9]+))?/(.*)$)");
   boost::smatch match;
 
@@ -231,14 +227,6 @@ const Utilities::Destination Utilities::getDestinationFromUrl(const std::string&
   if (boost::regex_search(url, match, re))
   {
     result.protocol = match[1];
-
-    result.port = 0;
-    const auto itr = ProtocolPortMap.find(result.protocol);
-    if (itr != std::end(ProtocolPortMap))
-    {
-      result.port = (*itr).second;
-    }
-
     result.host = match[2];
     result.target = match[5];
   }
