@@ -13,7 +13,6 @@ int main()
     auto section = conf.getSection("ifttt");
 
     SendByWebhook sbwh("https://maker.ifttt.com//trigger/event/with/key/xxxx");
-
     IftttPayload payload;
     sbwh.send(payload);
 }
@@ -103,7 +102,6 @@ void IftttPayload::setValue1(const std::string& value)
   this->setValue1_ = true;
   this->value1_ = value;
 }
-
 void IftttPayload::setValue2(const std::string& value)
 {
   this->setValue2_ = true;
@@ -114,21 +112,6 @@ void IftttPayload::setValue3(const std::string& value)
 {
   this->setValue3_ = true;
   this->value3_ = value;
-}
-
-const std::string IftttPayload::getValue1() const
-{
-  return this->value1_;
-}
-
-const std::string IftttPayload::getValue2() const
-{
-  return this->value2_;
-}
-
-const std::string IftttPayload::getValue3() const
-{
-  return this->value3_;
 }
 
 const std::string IftttPayload::get()
