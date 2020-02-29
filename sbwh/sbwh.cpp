@@ -219,7 +219,7 @@ bool SendByWebhook::send(const Payload& payload)
 
 const Utilities::Destination Utilities::getDestinationFromUrl(const std::string& url)
 {
-  static const boost::regex re = boost::regex(R"(^(.+)://([^:]+?)(:([0-9]+))?/(.*)$)");
+  static const boost::regex re = boost::regex(R"(^(.+)://([^:]+?)(:([0-9]+))?(/.*)$)");
   boost::smatch match;
 
   auto result = Utilities::Destination();
