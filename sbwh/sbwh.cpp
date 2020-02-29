@@ -8,8 +8,11 @@ int main()
 {
     std::cout << "Hello World!\n";
 
-    Configure conf("");
-    SendByWebhook sbwh(conf);
+    std::string filePath = ".sbwhrc.toml";
+    Configure conf(filePath);
+    auto section = conf.getSection("ifttt");
+
+    SendByWebhook sbwh("https://maker.ifttt.com//trigger/event/with/key/xxxx");
 
     IftttPayload payload;
     sbwh.send(payload);
@@ -39,54 +42,51 @@ Logger::LogLevel Logger::getLevel()
   return Logger::level_;
 }
 
-void Logger::writeLog(const std::string& level, const std::string& message)
+std::string Logger::getLevelStringFromLogLevel(Logger::LogLevel level)
 {
-  std::cout << level << ": " << message << std::endl;
-}
-
-void Logger::trace(const std::string& message)
-{
-  if (this->getLevel() >= Logger::LogLevel::Trace)
+  switch (level)
   {
-    this->writeLog("Trace", message);
+  case Logger::LogLevel::Trace:
+    return "Trace";
+  case Logger::LogLevel::Info:
+    return "Info";
+  case Logger::LogLevel::Warn:
+    return "Warn";
+  case Logger::LogLevel::Error:
+    return "ERROR";
+  case Logger::LogLevel::Fatal:
+    return "FATAL";
+  default:
+    return "???";
   }
 }
 
-void Logger::info(const std::string& message)
+void Logger::writeLog(Logger::LogLevel level, const std::string& message)
 {
-  if (this->getLevel() >= Logger::LogLevel::Info)
-  {
-    this->writeLog("Info", message);
-  }
+  Logger::writeLog(level, boost::format("%s") % message);
 }
 
-void Logger::warn(const std::string& message)
+void Logger::writeLog(Logger::LogLevel level, const boost::format& format)
 {
-  if (this->getLevel() >= Logger::LogLevel::Warn)
+  if (Logger::getLevel() <= level)
   {
-    this->writeLog("Warn", message);
-  }
-}
-
-void Logger::error(const std::string& message)
-{
-  if (this->getLevel() >= Logger::LogLevel::Error)
-  {
-    this->writeLog("ERROR", message);
-  }
-}
-
-void Logger::fatal(const std::string& message)
-{
-  if (this->getLevel() >= Logger::LogLevel::Fatal)
-  {
-    this->writeLog("FATAL", message);
+    std::cout << Logger::getLevelStringFromLogLevel(level) << ": " << format << std::endl;
   }
 }
 
 nlohmann::json& Payload::getJson()
 {
   return this->json_;
+}
+
+Payload Payload::createFromString(const std::string& value)
+{
+  Payload result;
+
+  nlohmann::json& json = result.getJson();
+
+
+  return Payload();
 }
 
 const std::string Payload::get()
@@ -103,7 +103,6 @@ void IftttPayload::setValue1(const std::string& value)
   this->setValue1_ = true;
   this->value1_ = value;
 }
-
 void IftttPayload::setValue2(const std::string& value)
 {
   this->setValue2_ = true;
@@ -114,21 +113,6 @@ void IftttPayload::setValue3(const std::string& value)
 {
   this->setValue3_ = true;
   this->value3_ = value;
-}
-
-const std::string IftttPayload::getValue1() const
-{
-  return this->value1_;
-}
-
-const std::string IftttPayload::getValue2() const
-{
-  return this->value2_;
-}
-
-const std::string IftttPayload::getValue3() const
-{
-  return this->value3_;
 }
 
 const std::string IftttPayload::get()
@@ -154,14 +138,36 @@ const std::string IftttPayload::get()
   return Payload::get();
 }
 
-Configure::Configure(const std::string& filePath)
+Section::Section(const std::string& name, const std::string& url, const int port, const std::string& payload, const Section::MustacheMap& mustache):
+  name_(name), url_(url), port_(port), payload_(payload), mustache_(mustache)
 {
-
+  // NOP
 }
 
-SendByWebhook::SendByWebhook(Configure& conf)
+Configure::Configure(const std::string& filePath)
 {
+  namespace fs = boost::filesystem;
+  
+  if (!fs::exists(filePath))
+  {
+    Logger::fatal(boost::format("%1% not found.") % (filePath.length() <=0 ? "configure file" : filePath));
+    throw std::exception();
+  }
 
+  this->table_ = toml::parse(filePath);
+}
+
+Section Configure::getSection(const std::string& name) const
+{
+  const auto& section = toml::find(this->table_, name);
+  const auto& url = toml::find<std::string>(section, "url");
+  Logger::info(boost::format("%1%: %2%\n") % name % url.c_str());
+  return Section();
+}
+
+SendByWebhook::SendByWebhook(const std::string& url)
+{
+  this->dest_ = Utilities::getDestinationFromUrl(url);
 }
 
 bool SendByWebhook::send(const Payload& payload)
@@ -176,10 +182,15 @@ bool SendByWebhook::send(const Payload& payload)
   tcp::resolver resolver(context);
   beast::tcp_stream stream(context);
 
-  const char* const host = R"(maker.ifttt.com)";
-  const char* const port = "80";
-  const char* const target = R"(/trigger/event/with/key/xxxx)";
-  auto const results = resolver.resolve(host, port);
+  const auto service = this->dest_.protocol;
+  const auto host = this->dest_.host;
+  const auto target = this->dest_.target;
+  
+  Logger::info(boost::format("service: %s") % service);
+  Logger::info(boost::format("host: %s") % host);
+  Logger::info(boost::format("target: %s") % target);
+
+  auto const results = resolver.resolve(host, service);
 
   stream.connect(results);
 
@@ -207,3 +218,30 @@ bool SendByWebhook::send(const Payload& payload)
   return true;
 }
 
+const Utilities::Destination Utilities::getDestinationFromUrl(const std::string& url)
+{
+  static const std::map<std::string, int> ProtocolPortMap{
+    { "http", 80 },
+    { "https" , 443},
+  };
+  static const boost::regex re = boost::regex(R"(^(.+)://([^:]+?)(:([0-9]+))?/(.*)$)");
+  boost::smatch match;
+
+  auto result = Utilities::Destination();
+  if (boost::regex_search(url, match, re))
+  {
+    result.protocol = match[1];
+
+    result.port = 0;
+    const auto itr = ProtocolPortMap.find(result.protocol);
+    if (itr != std::end(ProtocolPortMap))
+    {
+      result.port = (*itr).second;
+    }
+
+    result.host = match[2];
+    result.target = match[5];
+  }
+
+  return std::move(result);
+}
