@@ -22,6 +22,10 @@
 
 
 // payload to send by POST
+#include "../toml11/toml.hpp"
+#include "../json/single_include/nlohmann/json.hpp"
+
+
 class Payload
 {
 private:
