@@ -12,8 +12,9 @@ int main()
     Configure conf(filePath);
     auto section = conf.getSection("ifttt");
 
-    SendByWebhook sbwh("https://maker.ifttt.com//trigger/event/with/key/xxxx");
-    IftttPayload payload;
+    auto payload = Payload(section.getPayload(), section.getMustache());
+
+    SendByWebhook sbwh(section.getUrl());
     sbwh.send(payload);
 }
 
@@ -45,24 +46,18 @@ std::string Logger::getLevelStringFromLogLevel(Logger::LogLevel level)
 {
   switch (level)
   {
-  case Logger::LogLevel::Trace:
-    return "Trace";
-  case Logger::LogLevel::Info:
-    return "Info";
-  case Logger::LogLevel::Warn:
-    return "Warn";
-  case Logger::LogLevel::Error:
-    return "ERROR";
-  case Logger::LogLevel::Fatal:
-    return "FATAL";
-  default:
-    return "???";
+  case Logger::LogLevel::Trace: return "Trace";
+  case Logger::LogLevel::Info: return "Info";
+  case Logger::LogLevel::Warn: return "Warn";
+  case Logger::LogLevel::Error: return "ERROR";
+  case Logger::LogLevel::Fatal: return "FATAL";
+  default: return "???";
   }
 }
 
 void Logger::writeLog(Logger::LogLevel level, const std::string& message)
 {
-  Logger::writeLog(level, boost::format("%s") % message);
+  Logger::writeLog(level, boost::format(message));
 }
 
 void Logger::writeLog(Logger::LogLevel level, const boost::format& format)
@@ -73,74 +68,59 @@ void Logger::writeLog(Logger::LogLevel level, const boost::format& format)
   }
 }
 
+Payload::Payload(const Section::PayloadMap payload, const Section::MustacheMap mustache)
+{
+  // nlohmann::json& json = result.getJson();
+
+
+  for (const auto& pitr : payload)
+  {
+    for (const auto& mitr : mustache)
+    {
+      mstch::map context{ {mitr.first, mitr.second} };
+      this->json_.emplace(pitr.first, mstch::render(pitr.second, context));
+    }
+  }
+}
+
+
 nlohmann::json& Payload::getJson()
 {
   return this->json_;
 }
 
-Payload Payload::createFromString(const std::string& value)
-{
-  Payload result;
-
-  nlohmann::json& json = result.getJson();
-
-
-  return Payload();
-}
-
-const std::string Payload::get()
+const std::string Payload::str() const
 {
   static constexpr int indent = 2;
   static constexpr char indentChar = ' ';
   static constexpr bool ensureAscii = false;
 
-  return this->json_.dump(indent, indentChar, ensureAscii);
+  auto result = this->json_.dump(indent, indentChar, ensureAscii);
+  return std::move(result);
 }
 
-void IftttPayload::setValue1(const std::string& value)
-{
-  this->setValue1_ = true;
-  this->value1_ = value;
-}
-void IftttPayload::setValue2(const std::string& value)
-{
-  this->setValue2_ = true;
-  this->value2_ = value;
-}
-
-void IftttPayload::setValue3(const std::string& value)
-{
-  this->setValue3_ = true;
-  this->value3_ = value;
-}
-
-const std::string IftttPayload::get()
-{
-  nlohmann::json& json = this->getJson();
-
-
-  if (this->setValue1_)
-  {
-    json["value1"] = this->getValue1();
-  }
-
-  if (this->setValue2_)
-  {
-    json["value2"] = this->getValue2();
-  }
-
-  if (this->setValue3_)
-  {
-    json["value3"] = this->getValue3();
-  }
-
-  return Payload::get();
-}
-
-Section::Section(const std::string& name, const std::string& url, const int port, const std::string& payload, const Section::MustacheMap& mustache):
+Section::Section(const std::string& name, const std::string& url, const int port, const Section::PayloadMap& payload, const Section::MustacheMap& mustache):
   name_(name), url_(url), port_(port), payload_(payload), mustache_(mustache)
 {
   // NOP
+}
+
+const std::map<const std::string, const std::string> Section::table2map(const toml::value& table)
+{
+  if (!table.is_table())
+  {
+    Logger::fatal("configure file parsing error.");
+    throw std::exception();
+  }
+
+  auto result = std::map<const std::string, const std::string>();
+
+  for (const auto& kv: table.as_table())
+  {
+    result.emplace(kv.first, kv.second.as_string());
+  }
+
+  return std::move(result);
 }
 
 Configure::Configure(const std::string& filePath)
@@ -159,9 +139,15 @@ Configure::Configure(const std::string& filePath)
 Section Configure::getSection(const std::string& name) const
 {
   const auto& section = toml::find(this->table_, name);
+
   const auto& url = toml::find<std::string>(section, "url");
   Logger::info(boost::format("%1%: %2%\n") % name % url.c_str());
-  return Section();
+
+  const auto payload = Section::table2payloadMap(toml::find(section, "payload"));
+  const auto mustache = Section::table2mustacheMap(toml::find(section, "mustache"));
+
+  auto result = Section(name, url, 0, payload, mustache);
+  return std::move(result);
 }
 
 SendByWebhook::SendByWebhook(const std::string& url)
@@ -203,8 +189,10 @@ bool SendByWebhook::send(const Payload& payload)
   request.keep_alive(true);
   // request.method(http::verb::post);
 
-  request.body() = R"({"value1": "aaaaaa"})";
+  request.body() = payload.str();
   request.prepare_payload();
+
+  Logger::info(boost::format("payload: %s") % payload.str());
 
   http::write(stream, request);
 
@@ -231,4 +219,4 @@ const Utilities::Destination Utilities::getDestinationFromUrl(const std::string&
   }
 
   return std::move(result);
-}
+} 

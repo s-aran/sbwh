@@ -21,86 +21,6 @@
 
 #pragma comment(lib, "mstch")
 
-
-// payload to send by POST
-class Payload
-{
-private:
-  nlohmann::json json_;
-
-protected:
-  nlohmann::json& getJson();
-
-public:
-  static Payload createFromString(const std::string& value);
-
-  const std::string get();
-
-};
-
-
-// IFTTT payload to send by POST
-class IftttPayload : public Payload
-{
-private:
-  bool setValue1_ = false;
-  bool setValue2_ = false;
-  bool setValue3_ = false;
-
-  std::string value1_;
-  std::string value2_;
-  std::string value3_;
-  
-public:
-
-  void setValue1(const std::string& value);
-  void setValue2(const std::string& value);
-  void setValue3(const std::string& value);
-
-  const std::string getValue1() const { return this->value1_; }
-  const std::string getValue2() const { return this->value2_; }
-  const std::string getValue3() const { return this->value3_; }
-
-  const std::string get();
-};
-
-// toml table
-class Section
-{
-public:
-  using MustacheMap = std::map<const std::string, const std::string>;
-
-private:
-  std::string name_ = "";
-  std::string url_ = "";
-  int port_ = 0;
-  std::string payload_ = "";
-  MustacheMap mustache_ = {};
-
-public:
-  Section() = default;
-  Section(const std::string& name, const std::string& url, const int port, const std::string& payload, const MustacheMap& mustache);
-
-  const std::string getName() const { return this->name_; }
-  const std::string getUrl() const { return this->url_; }
-  const int getPort() const { return this->port_; }
-  const std::string getPayload() const { return this->payload_; }
-  const MustacheMap getMustache() const { return this->mustache_; }
-};
-
-// toml
-class Configure
-{
-private:
-  toml::value table_;
-
-public:
-  Configure() = default;
-  explicit Configure(const std::string& filepath);
-
-  Section getSection(const std::string& name) const;
-};
-
 class Logger
 {
 public:
@@ -137,6 +57,7 @@ public:
   static void fatal(const boost::format& format) { Logger::writeLog(LogLevel::Fatal, format); }
 };
 
+
 struct Utilities
 {
   struct Destination
@@ -148,6 +69,69 @@ struct Utilities
 
   static const Destination getDestinationFromUrl(const std::string& url);
 };
+
+
+// toml table
+class Section
+{
+public:
+  using PayloadMap = std::map<const std::string, const std::string>;
+  using MustacheMap = std::map<const std::string, const std::string>;
+
+private:
+  std::string name_ = "";
+  std::string url_ = "";
+  int port_ = 0;
+  PayloadMap payload_ = {};
+  MustacheMap mustache_ = {};
+
+  static const std::map<const std::string, const std::string> table2map(const toml::value& table);
+
+public:
+  Section() = default;
+  Section(const std::string& name, const std::string& url, const int port, const PayloadMap& payload, const MustacheMap& mustache);
+
+  static PayloadMap table2payloadMap(const toml::value& table) { return Section::table2map(table); }
+  static MustacheMap table2mustacheMap(const toml::value& table) { return Section::table2map(table); }
+
+  const std::string getName() const { return this->name_; }
+  const std::string getUrl() const { return this->url_; }
+  const int getPort() const { return this->port_; }
+  const PayloadMap getPayload() const { return this->payload_; }
+  const MustacheMap getMustache() const { return this->mustache_; }
+};
+
+
+// toml
+class Configure
+{
+private:
+  toml::value table_;
+
+public:
+  Configure() = default;
+  explicit Configure(const std::string& filepath);
+
+  Section getSection(const std::string& name) const;
+};
+
+
+// payload to send by POST
+class Payload
+{
+private:
+  nlohmann::json json_;
+
+protected:
+  nlohmann::json& getJson();
+
+public:
+  Payload(const Section::PayloadMap payload, const Section::MustacheMap mustache);
+
+  const std::string str() const;
+
+};
+
 
 class SendByWebhook
 {
