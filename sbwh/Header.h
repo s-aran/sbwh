@@ -12,6 +12,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/program_options.hpp>
 #include <boost/regex.hpp>
 #include <boost/format.hpp>
 
@@ -19,7 +20,11 @@
 #include "../json/single_include/nlohmann/json.hpp"
 #include <mstch/mstch.hpp>
 
+#ifdef _DEBUG
+#pragma comment(lib, "mstchd")
+#else
 #pragma comment(lib, "mstch")
+#endif /* _DEBUG */
 
 class Logger
 {
@@ -57,6 +62,14 @@ public:
   static void fatal(const boost::format& format) { Logger::writeLog(LogLevel::Fatal, format); }
 };
 
+struct Version
+{
+  static constexpr int Major = 0;
+  static constexpr int Minor = 98;
+  static constexpr char const* Status = "Beta 1";
+
+  static const std::string getVersion() { return (boost::format("%d.%02d %s") % Major % Minor % Status).str(); }
+};
 
 struct Utilities
 {
@@ -68,6 +81,8 @@ struct Utilities
   };
 
   static const Destination getDestinationFromUrl(const std::string& url);
+
+  static const std::map<const std::string_view, const std::string_view> getLibraries();
 };
 
 

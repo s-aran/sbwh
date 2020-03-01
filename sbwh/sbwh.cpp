@@ -4,18 +4,54 @@
 #include <iostream>
 #include "Header.h"
 
-int main()
+int main(int argc, char* argv[])
 {
-    std::cout << "Hello World!\n";
+  if (argc == 2)
+  {
+    if (argv[1][0] == '-')
+    {
+      switch (argv[1][1])
+      {
+      case 'V':
+        std::cout << "sbwh" << " " << Version::getVersion() << std::endl;
+        return EXIT_SUCCESS;
+      case 'l':
+        std::cout << R"(See LICENSE file at github URL for license.)" << std::endl;
+        for (const auto& itr : Utilities::getLibraries())
+        {
+          std::cout << "* " << itr.first << ": " << itr.second << std::endl;
+        }
+        return EXIT_SUCCESS;
+      case 'h':
+        [[fallthrough]];
+      default:
+        std::cout << argv[0] << " " << "[-Vhl] <name>" << std::endl;
+        return EXIT_SUCCESS;
+      }
+    }
+    else
+    {
+      try
+      {
+        std::string filePath = ".sbwhrc.toml";
+        Configure conf(filePath);
+        auto section = conf.getSection(argv[1]);
 
-    std::string filePath = ".sbwhrc.toml";
-    Configure conf(filePath);
-    auto section = conf.getSection("ifttt");
+        auto payload = Payload(section.getPayload(), section.getMustache());
 
-    auto payload = Payload(section.getPayload(), section.getMustache());
+        SendByWebhook sbwh(section.getUrl());
 
-    SendByWebhook sbwh(section.getUrl());
-    sbwh.send(payload);
+        sbwh.send(payload);
+      }
+      catch (std::exception)
+      {
+        return EXIT_FAILURE;
+      }
+
+      return EXIT_SUCCESS;
+    }
+  }
+  return EXIT_FAILURE;
 }
 
 // プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
@@ -30,7 +66,7 @@ int main()
 //   6. 後ほどこのプロジェクトを再び開く場合、[ファイル] > [開く] > [プロジェクト] と移動して .sln ファイルを選択します
 
 
-Logger::LogLevel Logger::level_ = Logger::LogLevel::Info;
+Logger::LogLevel Logger::level_ = Logger::LogLevel::Warning;
 
 void Logger::setLevel(Logger::LogLevel level)
 {
@@ -70,16 +106,16 @@ void Logger::writeLog(Logger::LogLevel level, const boost::format& format)
 
 Payload::Payload(const Section::PayloadMap payload, const Section::MustacheMap mustache)
 {
-  // nlohmann::json& json = result.getJson();
-
+  mstch::map context;
+  for (const auto& mitr : mustache)
+  {
+    context.emplace(mitr.first, mitr.second);
+  }
 
   for (const auto& pitr : payload)
   {
-    for (const auto& mitr : mustache)
-    {
-      mstch::map context{ {mitr.first, mitr.second} };
-      this->json_.emplace(pitr.first, mstch::render(pitr.second, context));
-    }
+    Logger::info(boost::format("processing %1%") % pitr.first);
+    this->json_.emplace(pitr.first, mstch::render(pitr.second, context));
   }
 }
 
@@ -200,7 +236,7 @@ bool SendByWebhook::send(const Payload& payload)
   http::response<http::dynamic_body> response;
   http::read(stream, buffer, response);
 
-  std::cout << response << std::endl;
+  // std::cout << response << std::endl;
 
   return true;
 }
@@ -220,3 +256,14 @@ const Utilities::Destination Utilities::getDestinationFromUrl(const std::string&
 
   return std::move(result);
 } 
+
+const std::map<const std::string_view, const std::string_view> Utilities::getLibraries()
+{
+  const auto result = std::map<const std::string_view, const std::string_view>({
+    {"boost", "https://www.boost.org/"},
+    {"nlohmann/json", "https://github.com/nlohmann/json"},
+    {"ToruNiina/toml11 ", "https://github.com/ToruNiina/toml11"},
+    {"no1msd/mstch ", "https://github.com/no1msd/mstch"},
+    });
+  return std::move(result);
+}
