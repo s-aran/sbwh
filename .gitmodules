@@ -1,0 +1,6 @@
+[submodule "toml11"]
+	path = toml11
+	url = https://github.com/ToruNiina/toml11.git
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json.git
