@@ -109,7 +109,7 @@ public:
 struct Version
 {
   static constexpr int Major = 0;
-  static constexpr int Minor = 98;
+  static constexpr int Minor = 99;
   static constexpr char const* Status = "Beta 2";
 
   static const std::string getVersion() { return (boost::format("%d.%02d %s") % Major % Minor % Status).str(); }

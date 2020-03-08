@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
 //   6. 後ほどこのプロジェクトを再び開く場合、[ファイル] > [開く] > [プロジェクト] と移動して .sln ファイルを選択します
 
 
-Logger::LogLevel Logger::level_ = Logger::LogLevel::Trace;
+Logger::LogLevel Logger::level_ = Logger::LogLevel::Fatal;
 
 void Logger::setLevel(Logger::LogLevel level)
 {
@@ -418,6 +418,7 @@ const std::map<const std::string_view, const std::string_view> Utilities::getLib
 {
   const auto result = std::map<const std::string_view, const std::string_view>({
     {"boost", "https://www.boost.org/"},
+    {"openssl", "https://github.com/openssl/openssl"},
     {"nlohmann/json", "https://github.com/nlohmann/json"},
     {"ToruNiina/toml11 ", "https://github.com/ToruNiina/toml11"},
     {"no1msd/mstch ", "https://github.com/no1msd/mstch"},
