@@ -217,6 +217,8 @@ SendByWebhook::SendByWebhook(const std::string& url)
 void SendByWebhook::load_root_certificates(boost::asio::ssl::context& context)
 {
   boost::system::error_code ec;
+
+#if defined (_WIN32)
   PCCERT_CONTEXT pcert_context = nullptr;
   LPCTSTR pzstore_name = TEXT("ROOT");
 
@@ -269,6 +271,15 @@ void SendByWebhook::load_root_certificates(boost::asio::ssl::context& context)
     CertCloseStore(hstore_handle, 0);
   }
   const std::string certs{ certificates };
+#elif defined (__linux__)
+  
+  const auto filename = R"(/etc/ssl/certs/ca-bundle.crt)";
+  std::ifstream ifs(filename);
+  std::string content{std::istreambuf_iterator<char>{ifs}, {}};
+  context.add_certificate_authority(boost::asio::buffer(content.data(), content.size()), ec);
+
+#endif /* _WIN32 */
+
 
   if (ec)
   {
@@ -332,8 +343,6 @@ bool SendByWebhook::send(const Payload& payload)
       Logger::info(boost::format("ssl payload: %s") % payload.str());
 
       http::write(stream, request);
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
       beast::flat_buffer buffer;
       http::response<http::dynamic_body> response;

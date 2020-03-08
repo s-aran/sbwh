@@ -27,7 +27,8 @@ THE SOFTWARE.
 #include <map>
 #include <memory>
 #include <string>
-#include <chrono>
+#include <iterator>
+#include <fstream>
 
 #define _WIN32_WINNT 0x0601
 
@@ -49,10 +50,12 @@ THE SOFTWARE.
 #include "../json/single_include/nlohmann/json.hpp"
 #include <mstch/mstch.hpp>
 
-#ifdef _WIN32
+#if defined ( _WIN32)
 #include <windows.h>
 #include <wincrypt.h>
 #pragma comment(lib, "Crypt32")
+#elif defined (__linux__)
+
 #endif /* _WINNT */
 
 #ifdef _DEBUG

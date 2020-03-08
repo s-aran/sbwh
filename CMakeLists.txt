@@ -30,6 +30,13 @@ else()
   message(FATAL_ERROR "Boost not found.")
 endif()
 
+find_package(OpenSSL)
+if(OPENSSL_FOUND)
+  include_directories(${OPENSSL_INCLUDE_DIR})
+  target_link_libraries(sbwh ${OPENSSL_CRYPTO_LIBRARIES})
+  target_link_libraries(sbwh ${OPENSSL_SSL_LIBRARIES})
+endif()
+
 # mustache
 find_package(mstch REQUIRED)
 if(mstch_FOUND)
