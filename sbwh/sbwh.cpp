@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
 //   6. 後ほどこのプロジェクトを再び開く場合、[ファイル] > [開く] > [プロジェクト] と移動して .sln ファイルを選択します
 
 
-Logger::LogLevel Logger::level_ = Logger::LogLevel::Warning;
+Logger::LogLevel Logger::level_ = Logger::LogLevel::Trace;
 
 void Logger::setLevel(Logger::LogLevel level)
 {
@@ -214,17 +214,77 @@ SendByWebhook::SendByWebhook(const std::string& url)
   this->dest_ = Utilities::getDestinationFromUrl(url);
 }
 
+void SendByWebhook::load_root_certificates(boost::asio::ssl::context& context)
+{
+  boost::system::error_code ec;
+  PCCERT_CONTEXT pcert_context = nullptr;
+  LPCTSTR pzstore_name = TEXT("ROOT");
+
+  // Try to open root certificate store
+  // If it succeeds, it'll return a handle to the certificate store
+  // If it fails, it'll return NULL
+  auto hstore_handle = CertOpenSystemStore(NULL, pzstore_name);
+  char* data = nullptr;
+  std::string certificates;
+  X509* x509 = nullptr;
+  BIO* bio = nullptr;
+  if (hstore_handle != nullptr)
+  {
+    // Extract the certificates from the store in a loop
+    while ((pcert_context = CertEnumCertificatesInStore(hstore_handle, pcert_context)) != NULL)
+    {
+      x509 = d2i_X509(nullptr, const_cast<const BYTE**>(&pcert_context->pbCertEncoded), pcert_context->cbCertEncoded);
+      bio = BIO_new(BIO_s_mem());
+      if (PEM_write_bio_X509(bio, x509))
+      {
+        auto len = BIO_get_mem_data(bio, &data);
+        if (certificates.size() == 0)
+        {
+          certificates = { data, static_cast<std::size_t>(len) };
+          context.add_certificate_authority(boost::asio::buffer(certificates.data(), certificates.size()), ec);
+          if (ec)
+          {
+            BIO_free(bio);
+            X509_free(x509);
+            CertCloseStore(hstore_handle, 0);
+            return;
+          }
+        }
+        else
+        {
+          certificates.append(data, static_cast<std::size_t>(len));
+          context.add_certificate_authority(boost::asio::buffer(certificates.data(), certificates.size()), ec);
+          if (ec)
+          {
+            BIO_free(bio);
+            X509_free(x509);
+            CertCloseStore(hstore_handle, 0);
+            return;
+          }
+        }
+      }
+      BIO_free(bio);
+      X509_free(x509);
+    }
+    CertCloseStore(hstore_handle, 0);
+  }
+  const std::string certs{ certificates };
+
+  if (ec)
+  {
+    throw boost::system::system_error{ ec };
+  }
+}
+
 bool SendByWebhook::send(const Payload& payload)
 {
   namespace beast = boost::beast;
   namespace http = beast::http;
   namespace net = boost::asio;
+  namespace ssl = net::ssl;
   using tcp = net::ip::tcp;
 
-
   net::io_context context;
-  tcp::resolver resolver(context);
-  beast::tcp_stream stream(context);
 
   const auto service = this->dest_.protocol;
   const auto host = this->dest_.host;
@@ -234,30 +294,95 @@ bool SendByWebhook::send(const Payload& payload)
   Logger::info(boost::format("host: %s") % host);
   Logger::info(boost::format("target: %s") % target);
 
-  auto const results = resolver.resolve(host, service);
+  if (service == "https")
+  {
+    try
+    {
+      ssl::context ssl_context(ssl::context::tlsv12_client);
+      load_root_certificates(ssl_context);
+      ssl_context.set_verify_mode(ssl::verify_peer);
 
-  stream.connect(results);
+      tcp::resolver resolver(context);
+      beast::ssl_stream<beast::tcp_stream> stream(context, ssl_context);
 
-  http::request<http::string_body> request{ http::verb::post, target, 11 };
-  // http::request<http::string_body> request;
-  // request.version(11);
-  request.set(http::field::host, host);
-  // request.target(target);
-  request.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-  request.set(http::field::content_type, "application/json");
-  request.keep_alive(true);
-  // request.method(http::verb::post);
+      if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
+      {
+        beast::error_code ec{ static_cast<int>(::ERR_get_error()), net::error::get_ssl_category() };
+        throw beast::system_error{ ec };
+      }
 
-  request.body() = payload.str();
-  request.prepare_payload();
+      auto const results = resolver.resolve(host, service);
 
-  Logger::info(boost::format("payload: %s") % payload.str());
+      beast::get_lowest_layer(stream).connect(results);
+      stream.handshake(ssl::stream_base::client);
 
-  http::write(stream, request);
+      http::request<http::string_body> request{ http::verb::post, target, 11 };
+      // http::request<http::string_body> request;
+      // request.version(11);
+      request.set(http::field::host, host);
+      // request.target(target);
+      request.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+      request.set(http::field::content_type, "application/json");
+      // request.keep_alive(true);
+      // request.method(http::verb::post);
 
-  beast::flat_buffer buffer;
-  http::response<http::dynamic_body> response;
-  http::read(stream, buffer, response);
+      request.body() = payload.str();
+      request.prepare_payload();
+
+      Logger::info(boost::format("ssl payload: %s") % payload.str());
+
+      http::write(stream, request);
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      beast::flat_buffer buffer;
+      http::response<http::dynamic_body> response;
+      http::read(stream, buffer, response);
+
+      beast::error_code ec;
+      stream.shutdown(ec);
+      if (ec == net::error::eof)
+      {
+        ec = {};
+      }
+      if (ec)
+      {
+        throw beast::system_error{ ec };
+      }
+    }
+    catch (std::exception const& e)
+    {
+      Logger::error(boost::format("%1%") % e.what());
+    }
+  }
+  else
+  {
+    beast::tcp_stream stream(context);
+    tcp::resolver resolver(context);
+    auto const results = resolver.resolve(host, service);
+    stream.connect(results);
+
+    http::request<http::string_body> request{ http::verb::post, target, 11 };
+    // http::request<http::string_body> request;
+    // request.version(11);
+    request.set(http::field::host, host);
+    // request.target(target);
+    request.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    request.set(http::field::content_type, "application/json");
+    // request.keep_alive(true);
+    // request.method(http::verb::post);
+
+    request.body() = payload.str();
+    request.prepare_payload();
+
+    Logger::info(boost::format("payload: %s") % payload.str());
+
+    http::write(stream, request);
+
+    beast::flat_buffer buffer;
+    http::response<http::dynamic_body> response;
+    http::read(stream, buffer, response);
+  }
 
   // std::cout << response << std::endl;
 

@@ -26,13 +26,20 @@ THE SOFTWARE.
 #include <vector>
 #include <map>
 #include <memory>
+#include <string>
+#include <chrono>
 
 #define _WIN32_WINNT 0x0601
 
 #include <boost/beast.hpp>
+#include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
-#include <boost/asio.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/version.hpp>
+#include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/error.hpp>
+#include <boost/asio/ssl/stream.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/regex.hpp>
@@ -42,11 +49,23 @@ THE SOFTWARE.
 #include "../json/single_include/nlohmann/json.hpp"
 #include <mstch/mstch.hpp>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <wincrypt.h>
+#pragma comment(lib, "Crypt32")
+#endif /* _WINNT */
+
 #ifdef _DEBUG
 #pragma comment(lib, "mstchd")
+#pragma comment(lib, "libcrypto64MTd")
+#pragma comment(lib, "libssl64MTd")
 #else
 #pragma comment(lib, "mstch")
+#pragma comment(lib, "libcrypto64MT")
+#pragma comment(lib, "libssl64MT")
 #endif /* _DEBUG */
+
+
 
 class Logger
 {
@@ -88,7 +107,7 @@ struct Version
 {
   static constexpr int Major = 0;
   static constexpr int Minor = 98;
-  static constexpr char const* Status = "Beta 1";
+  static constexpr char const* Status = "Beta 2";
 
   static const std::string getVersion() { return (boost::format("%d.%02d %s") % Major % Minor % Status).str(); }
 };
@@ -174,6 +193,8 @@ class SendByWebhook
 {
 private:
   Utilities::Destination dest_;
+
+  void load_root_certificates(boost::asio::ssl::context& context);
 
 public:
   SendByWebhook(const std::string& url);
