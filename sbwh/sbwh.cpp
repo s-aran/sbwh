@@ -137,7 +137,8 @@ Payload::Payload(const Section::PayloadMap payload, const Section::MustacheMap m
   for (const auto& pitr : payload)
   {
     Logger::info(boost::format("processing %1%") % pitr.first);
-    this->json_.emplace(pitr.first, mstch::render(pitr.second, context));
+    auto rendered = mstch::render(pitr.second, context);
+    this->json_.emplace(pitr.first, rendered);
   }
 }
 
@@ -287,5 +288,5 @@ const std::map<const std::string_view, const std::string_view> Utilities::getLib
     {"ToruNiina/toml11 ", "https://github.com/ToruNiina/toml11"},
     {"no1msd/mstch ", "https://github.com/no1msd/mstch"},
     });
-  return std::move(result);
+  return result;
 }
