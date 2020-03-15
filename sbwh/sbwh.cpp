@@ -297,15 +297,16 @@ bool SendByWebhook::send(const Payload& payload)
 
   net::io_context context;
 
-  const auto service = this->dest_.protocol;
+  const auto protocol = this->dest_.protocol;
   const auto host = this->dest_.host;
+  const auto port = this->dest_.port;
   const auto target = this->dest_.target;
   
-  Logger::info(boost::format("service: %s") % service);
+  Logger::info(boost::format("protocol: %s") % protocol);
   Logger::info(boost::format("host: %s") % host);
   Logger::info(boost::format("target: %s") % target);
 
-  if (service == "https")
+  if (protocol == "https")
   {
     try
     {
@@ -322,7 +323,7 @@ bool SendByWebhook::send(const Payload& payload)
         throw beast::system_error{ ec };
       }
 
-      auto const results = resolver.resolve(host, service);
+      auto const results = resolver.resolve(host, (port == 0) ? protocol : boost::lexical_cast<std::string>(port));
 
       beast::get_lowest_layer(stream).connect(results);
       stream.handshake(ssl::stream_base::client);
@@ -368,7 +369,7 @@ bool SendByWebhook::send(const Payload& payload)
   {
     beast::tcp_stream stream(context);
     tcp::resolver resolver(context);
-    auto const results = resolver.resolve(host, service);
+    auto const results = resolver.resolve(host, (port == 0) ? protocol : boost::lexical_cast<std::string>(port));
     stream.connect(results);
 
     http::request<http::string_body> request{ http::verb::post, target, 11 };
@@ -408,6 +409,7 @@ const Utilities::Destination Utilities::getDestinationFromUrl(const std::string&
   {
     result.protocol = match[1];
     result.host = match[2];
+    result.port = boost::lexical_cast<int>(match[4]);
     result.target = match[5];
   }
 

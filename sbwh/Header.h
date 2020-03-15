@@ -119,9 +119,10 @@ struct Utilities
 {
   struct Destination
   {
-    std::string protocol;
-    std::string host;
-    std::string target;
+    std::string protocol = "";
+    std::string host = "";
+    int port = 0;
+    std::string target = "";
   };
 
   static const Destination getDestinationFromUrl(const std::string& url);
