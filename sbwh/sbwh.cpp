@@ -179,7 +179,7 @@ const std::map<const std::string, const std::string> Section::table2map(const to
     result.emplace(kv.first, kv.second.as_string());
   }
 
-  return std::move(result);
+  return result;
 }
 
 Configure::Configure(const std::string& filePath)
